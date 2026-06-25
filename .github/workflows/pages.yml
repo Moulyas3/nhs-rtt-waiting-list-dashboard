@@ -1,0 +1,46 @@
+name: Deploy dashboard to GitHub Pages
+
+# Publishes the repository to GitHub Pages. The first run also switches Pages on
+# (enablement: true) using the workflow's own token, so no manual setup is
+# needed. The site is served from the repository root, where index.html forwards
+# visitors into dashboard/. A data refresh (which pushes to main) redeploys here
+# automatically.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deployment finish; don't pile up overlapping ones.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Configure Pages (enables Pages on the first run)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload the site as a Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
