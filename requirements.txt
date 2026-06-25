@@ -1,0 +1,5 @@
+# Python dependencies for the cleaning pipeline (scripts/clean_rtt_data.py).
+# Everything else it uses - os, re, json, zipfile, pathlib, datetime - is part
+# of the Python standard library and does not need installing.
+pandas>=2.0
+requests>=2.28

@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NHS RTT Waiting List Dashboard</title>
+
+<!-- Chart.js from CDN (pinned + integrity-checked). The processed data is
+     embedded as a JavaScript variable in dashboard_data.js, so once the page
+     has loaded the dashboard works without any further network access. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+<script src="dashboard_data.js"></script>
+
+<style>
+  /* ---- NHS colour palette (matches dashboard/nhs_theme.json) ------------- */
+  :root {
+    --nhs-blue:   #003087;  /* headers and titles                            */
+    --nhs-aqua:   #00A9CE;  /* positive / neutral data                       */
+    --nhs-red:    #DA291C;  /* below target                                  */
+    --nhs-amber:  #FFB81C;  /* borderline 70-80%                             */
+    --nhs-green:  #009639;  /* above 80% (red-amber-green formatting)         */
+    --nhs-dark:   #425563;  /* body text                                     */
+    --nhs-mid:    #768692;  /* secondary text / no data                      */
+    --line:       #d8dde0;
+    --bg:         #f4f6f7;
+    --card:       #ffffff;
+    --gap: 16px;
+    --radius: 6px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;   /* NHS house style */
+    background: var(--bg);
+    color: var(--nhs-dark);
+    line-height: 1.45;
+  }
+
+  /* ---- Header ------------------------------------------------------------ */
+  header {
+    background: var(--nhs-blue);
+    color: #fff;
+    padding: 14px 24px;
+  }
+  .header-inner { max-width: 1320px; margin: 0 auto; display: flex;
+    align-items: center; gap: 18px; flex-wrap: wrap; }
+  .logo {
+    background: #fff; color: var(--nhs-blue); font-weight: 700;
+    font-size: 22px; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 3px;
+  }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header .sub { font-size: 13px; color: #cfe3ee; margin-top: 2px; }
+  .header-meta { margin-left: auto; text-align: right; font-size: 12px; color: #cfe3ee; }
+
+  /* ---- Tab navigation ---------------------------------------------------- */
+  nav { background: #002060; }
+  .nav-inner { max-width: 1320px; margin: 0 auto; display: flex; flex-wrap: wrap; }
+  .tab {
+    background: none; border: none; color: #cfe3ee; cursor: pointer;
+    font-family: inherit; font-size: 14px; padding: 12px 20px;
+    border-bottom: 3px solid transparent;
+  }
+  .tab:hover { color: #fff; }
+  .tab.active { color: #fff; border-bottom-color: var(--nhs-aqua); font-weight: 700; }
+
+  main { max-width: 1320px; margin: 0 auto; padding: var(--gap); }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page-head { display: flex; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: 12px; margin-bottom: var(--gap); }
+  .page-head h2 { color: var(--nhs-blue); font-size: 18px; }
+  .page-head p { color: var(--nhs-mid); font-size: 13px; max-width: 720px; }
+
+  /* ---- Filters ----------------------------------------------------------- */
+  .filters { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .filter-group { display: flex; flex-direction: column; gap: 3px; }
+  .filter-group label { font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--nhs-mid); }
+  select {
+    font-family: inherit; font-size: 13px; padding: 7px 10px;
+    border: 1px solid var(--line); border-radius: 4px; background: #fff;
+    color: var(--nhs-dark); min-width: 170px;
+  }
+
+  /* ---- KPI cards --------------------------------------------------------- */
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
+    gap: var(--gap); margin-bottom: var(--gap); }
+  .kpi { background: var(--card); border-radius: var(--radius);
+    padding: 16px 18px; border-left: 5px solid var(--nhs-blue);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .kpi .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--nhs-mid); margin-bottom: 6px; }
+  .kpi .value { font-size: 30px; font-weight: 700; color: var(--nhs-blue); }
+  .kpi .context { font-size: 12px; color: var(--nhs-mid); margin-top: 2px; }
+  .kpi .delta { font-size: 12px; font-weight: 700; margin-top: 6px; }
+  .delta.good { color: var(--nhs-green); }
+  .delta.bad  { color: var(--nhs-red); }
+  .delta.flat { color: var(--nhs-mid); }
+  .kpi.accent-aqua  { border-left-color: var(--nhs-aqua); }
+  .kpi.accent-green { border-left-color: var(--nhs-green); }
+  .kpi.accent-red   { border-left-color: var(--nhs-red); }
+
+  /* ---- Chart cards ------------------------------------------------------- */
+  .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap); margin-bottom: var(--gap); }
+  .grid-1 { display: grid; grid-template-columns: 1fr; gap: var(--gap); margin-bottom: var(--gap); }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border-radius: var(--radius);
+    padding: 16px 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .card h3 { color: var(--nhs-blue); font-size: 14px; margin-bottom: 4px; }
+  .card .hint { color: var(--nhs-mid); font-size: 12px; margin-bottom: 12px; }
+  .chart-box { position: relative; height: 320px; }
+  .chart-box.tall { height: 640px; }
+
+  /* ---- Legend chips ------------------------------------------------------ */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+  /* ---- Matrix / tables --------------------------------------------------- */
+  .table-wrap { overflow: auto; max-height: 540px; border: 1px solid var(--line); border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { padding: 6px 8px; text-align: center; white-space: nowrap; }
+  thead th { position: sticky; top: 0; background: var(--nhs-blue); color: #fff;
+    font-weight: 700; z-index: 2; }
+  tbody th { position: sticky; left: 0; background: #eef2f4; text-align: left;
+    font-weight: 400; z-index: 1; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+  td.cell { color: #14303a; font-weight: 700; }
+  td.empty { background: #f7f9fa; color: var(--nhs-mid); font-weight: 400; }
+  .detail-table th, .detail-table td { text-align: left; }
+  .detail-table tbody td { border-bottom: 1px solid var(--line); }
+
+  /* ---- Footer ------------------------------------------------------------ */
+  footer { border-top: 1px solid var(--line); margin-top: 6px;
+    padding: 14px 0; color: var(--nhs-mid); font-size: 12px; text-align: center; }
+  footer strong { color: var(--nhs-blue); }
+
+  .note { font-size: 12px; color: var(--nhs-mid); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <span class="logo">NHS</span>
+    <div>
+      <h1>Referral to Treatment (RTT) Waiting List Dashboard</h1>
+      <div class="sub">Consultant-led elective waiting times in England &middot; incomplete pathways</div>
+    </div>
+    <div class="header-meta" id="header-meta"></div>
+  </div>
+</header>
+
+<nav>
+  <div class="nav-inner">
+    <button class="tab active" data-page="overview">National Overview</button>
+    <button class="tab" data-page="trust">Trust Performance</button>
+    <button class="tab" data-page="specialty">Specialty Breakdown</button>
+  </div>
+</nav>
+
+<main>
+
+  <!-- ============================ PAGE 1 ============================ -->
+  <section class="page active" id="page-overview">
+    <div class="page-head">
+      <div>
+        <h2>National Overview</h2>
+        <p>How England is performing against the 18-week standard. The interim
+           target is 70% of patients waiting 18 weeks or less; the constitutional
+           standard is 92%.</p>
+      </div>
+      <div class="filters">
+        <div class="filter-group">
+          <label for="month-select">Month</label>
+          <select id="month-select"></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi" id="kpi-total">
+        <div class="label">Total patients waiting</div>
+        <div class="value">&mdash;</div>
+        <div class="context">incomplete pathways</div>
+        <div class="delta flat"></div>
+      </div>
+      <div class="kpi accent-aqua" id="kpi-pct">
+        <div class="label">% within 18 weeks</div>
+        <div class="value">&mdash;</div>
+        <div class="context">target 70% &middot; standard 92%</div>
+        <div class="delta flat"></div>
+      </div>
+      <div class="kpi accent-green" id="kpi-meeting">
+        <div class="label">Trusts meeting 70% target</div>
+        <div class="value">&mdash;</div>
+        <div class="context"></div>
+        <div class="delta flat"></div>
+      </div>
+      <div class="kpi accent-red" id="kpi-over52">
+        <div class="label">Waiting over 52 weeks</div>
+        <div class="value">&mdash;</div>
+        <div class="context">longest waits</div>
+        <div class="delta flat"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>% within 18 weeks over time</h3>
+        <div class="hint">Monthly national performance against the 70% interim target and the 92% standard.</div>
+        <div class="chart-box"><canvas id="trend-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Trusts meeting vs missing target</h3>
+        <div class="hint">Share of providers at or above 70% in the selected month.</div>
+        <div class="chart-box"><canvas id="donut-chart"></canvas></div>
+      </div>
+    </div>
+
+    <footer>Source: <strong>NHS England Open Data</strong> &mdash; Referral to Treatment Waiting Times. Open Government Licence v3.0.</footer>
+  </section>
+
+  <!-- ============================ PAGE 2 ============================ -->
+  <section class="page" id="page-trust">
+    <div class="page-head">
+      <div>
+        <h2>Trust Performance</h2>
+        <p>Provider-level performance for the latest month. Filter by Integrated
+           Care Board (ICB) region or performance band to isolate the trusts that
+           matter to you.</p>
+      </div>
+      <div class="filters">
+        <div class="filter-group">
+          <label for="icb-select">ICB region</label>
+          <select id="icb-select"></select>
+        </div>
+        <div class="filter-group">
+          <label for="band-select">Performance band</label>
+          <select id="band-select">
+            <option value="all">All bands</option>
+            <option value="Below 70%">Below 70% (missing target)</option>
+            <option value="70-80%">70-80% (borderline)</option>
+            <option value="Above 80%">Above 80%</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend" style="margin-bottom:var(--gap)">
+      <span><i class="dot" style="background:var(--nhs-red)"></i> Below 70%</span>
+      <span><i class="dot" style="background:var(--nhs-amber)"></i> 70-80%</span>
+      <span><i class="dot" style="background:var(--nhs-green)"></i> Above 80%</span>
+    </div>
+
+    <div class="grid-1">
+      <div class="card">
+        <h3>Trusts ranked by % within 18 weeks</h3>
+        <div class="hint" id="bar-hint">Lowest performers first. Hover a bar for total waiting and 52-week waits.</div>
+        <div class="chart-box tall"><canvas id="trust-bar"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-1">
+      <div class="card">
+        <h3>% within 18 weeks by trust and specialty</h3>
+        <div class="hint" id="matrix-hint">Cells are coloured red / amber / green against the 70% and 80% thresholds.</div>
+        <div class="table-wrap"><table id="matrix-table"></table></div>
+        <div class="note" id="matrix-note"></div>
+      </div>
+    </div>
+
+    <footer>Source: <strong>NHS England Open Data</strong> &mdash; Referral to Treatment Waiting Times. Open Government Licence v3.0.</footer>
+  </section>
+
+  <!-- ============================ PAGE 3 ============================ -->
+  <section class="page" id="page-specialty">
+    <div class="page-head">
+      <div>
+        <h2>Specialty Breakdown</h2>
+        <p>Where the longest waits sit by specialty, and how each trust trades off
+           list size against performance. Click a point on the scatter plot to see
+           that trust's specialty detail.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Longest average waits by specialty</h3>
+        <div class="hint">Estimated mean wait in weeks (from banded counts), top 15 specialties nationally.</div>
+        <div class="chart-box tall"><canvas id="specialty-bar"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>List size vs performance (each dot = one trust)</h3>
+        <div class="hint">x: total waiting &middot; y: % within 18 weeks &middot; size: 52-week waits &middot; colour: band.</div>
+        <div class="chart-box tall"><canvas id="scatter-chart"></canvas></div>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--nhs-red)"></i> Below 70%</span>
+          <span><i class="dot" style="background:var(--nhs-amber)"></i> 70-80%</span>
+          <span><i class="dot" style="background:var(--nhs-green)"></i> Above 80%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-1">
+      <div class="card">
+        <h3 id="detail-title">Trust detail</h3>
+        <div class="hint" id="detail-hint">Click a dot on the scatter plot above to drill into a single trust.</div>
+        <div class="table-wrap" style="max-height:360px"><table class="detail-table" id="detail-table"></table></div>
+      </div>
+    </div>
+
+    <footer>Source: <strong>NHS England Open Data</strong> &mdash; Referral to Treatment Waiting Times. Open Government Licence v3.0.</footer>
+  </section>
+
+</main>
+
+<script>
+"use strict";
+
+/* =======================================================================
+   NHS RTT dashboard - front-end logic
+   All numbers come from DASHBOARD_DATA (generated by clean_rtt_data.py).
+   Nothing is hard-coded here: trusts, specialties, months and totals are
+   all read from that object, so refreshing the data refreshes the page.
+   ======================================================================= */
+
+const D = DASHBOARD_DATA;
+const C = {
+  blue: '#003087', aqua: '#00A9CE', red: '#DA291C', amber: '#FFB81C',
+  green: '#009639', dark: '#425563', mid: '#768692'
+};
+Chart.defaults.font.family = 'Arial, Helvetica, sans-serif';
+Chart.defaults.color = C.dark;
+
+/* ---- formatting helpers ------------------------------------------------ */
+const fmtInt  = n => (n === null || n === undefined) ? '—' : Math.round(n).toLocaleString('en-GB');
+const fmtPct  = p => (p === null || p === undefined) ? '—' : (p * 100).toFixed(1) + '%';
+const trunc   = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+const bandColour = b => ({ 'Below 70%': C.red, '70-80%': C.amber, 'Above 80%': C.green })[b] || C.mid;
+
+/* Colour a delta by whether the movement is good or bad for that metric.
+   goodIfDown=true means a fall is an improvement (e.g. fewer patients waiting). */
+function setDelta(el, curr, prev, opts) {
+  opts = opts || {};
+  if (prev === null || prev === undefined) { el.textContent = ''; return; }
+  const diff = curr - prev;
+  let txt;
+  if (opts.points) txt = (diff >= 0 ? '+' : '') + (diff * 100).toFixed(1) + ' pts vs prev month';
+  else if (opts.count) txt = (diff >= 0 ? '+' : '') + Math.round(diff) + ' vs prev month';
+  else { const pct = prev ? (diff / prev) * 100 : 0; txt = (diff >= 0 ? '+' : '') + pct.toFixed(1) + '% vs prev month'; }
+  const improved = opts.goodIfDown ? diff < 0 : diff > 0;
+  el.className = 'delta ' + (diff === 0 ? 'flat' : improved ? 'good' : 'bad');
+  el.textContent = txt;
+}
+
+/* =======================================================================
+   PAGE 1 - National Overview
+   ======================================================================= */
+const monthSelect = document.getElementById('month-select');
+D.trend.forEach((t, i) => {
+  const o = document.createElement('option');
+  o.value = i; o.textContent = t.label;
+  monthSelect.appendChild(o);
+});
+monthSelect.value = D.trend.length - 1;       // default to the most recent month
+
+document.getElementById('header-meta').innerHTML =
+  'Latest data: <strong style="color:#fff">' + D.meta.latest_period + '</strong><br>' +
+  D.meta.provider_count + ' providers &middot; generated ' + D.meta.generated;
+
+function renderKPIs(i) {
+  const t = D.trend[i], p = i > 0 ? D.trend[i - 1] : null;
+
+  const total = document.getElementById('kpi-total');
+  total.querySelector('.value').textContent = fmtInt(t.total_waiting);
+  setDelta(total.querySelector('.delta'), t.total_waiting, p && p.total_waiting, { goodIfDown: true });
+
+  const pct = document.getElementById('kpi-pct');
+  pct.querySelector('.value').textContent = fmtPct(t.pct);
+  setDelta(pct.querySelector('.delta'), t.pct, p && p.pct, { points: true, goodIfDown: false });
+
+  const meet = document.getElementById('kpi-meeting');
+  meet.querySelector('.value').textContent = t.meeting;
+  meet.querySelector('.context').textContent = 'of ' + t.trusts_total + ' trusts at or above 70%';
+  setDelta(meet.querySelector('.delta'), t.meeting, p && p.meeting, { count: true, goodIfDown: false });
+
+  const o52 = document.getElementById('kpi-over52');
+  o52.querySelector('.value').textContent = fmtInt(t.over_52_weeks);
+  setDelta(o52.querySelector('.delta'), t.over_52_weeks, p && p.over_52_weeks, { goodIfDown: true });
+}
+
+let trendChart, donutChart;
+function buildOverview() {
+  const labels = D.trend.map(t => t.label);
+  const pcts   = D.trend.map(t => t.pct * 100);
+  trendChart = new Chart(document.getElementById('trend-chart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: '% within 18 weeks', data: pcts, borderColor: C.blue,
+        backgroundColor: 'rgba(0,48,135,0.08)', borderWidth: 3, fill: true,
+        tension: 0.3, pointRadius: 3, pointHoverRadius: 6, pointBackgroundColor: C.blue },
+      { label: '70% interim target', data: labels.map(() => 70), borderColor: C.aqua,
+        borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false },
+      { label: '92% standard', data: labels.map(() => 92), borderColor: C.red,
+        borderWidth: 2, borderDash: [6, 4], pointRadius: 0, fill: false }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(1) + '%' } } },
+      scales: { y: { min: 50, max: 100, ticks: { callback: v => v + '%' },
+          title: { display: true, text: '% within 18 weeks' } },
+        x: { grid: { display: false } } }
+    }
+  });
+
+  donutChart = new Chart(document.getElementById('donut-chart'), {
+    type: 'doughnut',
+    data: { labels: ['Meeting target', 'Missing target'],
+      datasets: [{ data: [0, 0], backgroundColor: [C.green, C.red], borderColor: '#fff', borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10 } },
+        tooltip: { callbacks: { label: c => {
+          const tot = c.dataset.data[0] + c.dataset.data[1];
+          return c.label + ': ' + c.parsed + ' (' + (c.parsed / tot * 100).toFixed(0) + '%)'; } } } } }
+  });
+}
+
+function refreshOverview() {
+  const i = +monthSelect.value;
+  renderKPIs(i);
+  // Highlight the selected month on the trend line.
+  trendChart.data.datasets[0].pointRadius = D.trend.map((_, j) => j === i ? 7 : 3);
+  trendChart.update('none');
+  donutChart.data.datasets[0].data = [D.trend[i].meeting, D.trend[i].missing];
+  donutChart.update();
+}
+monthSelect.addEventListener('change', refreshOverview);
+
+/* =======================================================================
+   PAGE 2 - Trust Performance
+   ======================================================================= */
+const matrix = D.matrix;
+// Look up a matrix cell by "trustIndex_specialtyIndex" -> [within18, total].
+const cellMap = new Map();
+matrix.cells.forEach(([t, s, w, tot]) => cellMap.set(t + '_' + s, [w, tot]));
+
+// Populate the ICB filter from the data.
+const icbSelect = document.getElementById('icb-select');
+['All ICBs'].concat(D.icbs).forEach((name, i) => {
+  const o = document.createElement('option');
+  o.value = i === 0 ? 'all' : name;
+  o.textContent = i === 0 ? name : trunc(name.replace('NHS ', '').replace(' INTEGRATED CARE BOARD', ''), 40);
+  icbSelect.appendChild(o);
+});
+const bandSelect = document.getElementById('band-select');
+
+// Indices of the trusts that pass the current ICB + band filters.
+function filteredTrustIndices() {
+  const icb = icbSelect.value, band = bandSelect.value;
+  const idx = [];
+  D.trusts.forEach((t, i) => {
+    if (icb !== 'all' && t.icb !== icb) return;
+    if (band !== 'all' && t.band !== band) return;
+    idx.push(i);
+  });
+  return idx;
+}
+
+const MAX_BARS = 30, MAX_MATRIX_ROWS = 30;
+let trustBar;
+let currentBarTrusts = [];   // trusts currently drawn, in bar order (for tooltips)
+function buildTrustBarShell() {
+  trustBar = new Chart(document.getElementById('trust-bar'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: '% within 18 weeks', data: [],
+      backgroundColor: [], borderWidth: 0 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: items => currentBarTrusts[items[0].dataIndex].name,
+          label: c => { const t = currentBarTrusts[c.dataIndex]; return [
+            '% within 18 weeks: ' + fmtPct(t.pct),
+            'Total waiting: ' + fmtInt(t.total),
+            'Over 52 weeks: ' + fmtInt(t.over52),
+            'Target met: ' + (t.pct >= D.meta.interim_target ? 'Yes' : 'No') ]; } } }
+      },
+      scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } },
+        y: { ticks: { autoSkip: false, font: { size: 10 } } } }
+    }
+  });
+}
+
+function refreshTrustBar() {
+  const all = filteredTrustIndices();
+  const idx = all.slice()
+    .sort((a, b) => (D.trusts[a].pct ?? 1) - (D.trusts[b].pct ?? 1))  // worst first
+    .slice(0, MAX_BARS);
+  // Keep numeric data aligned to labels; the tooltip reads the parallel array.
+  currentBarTrusts = idx.map(i => D.trusts[i]);
+  trustBar.data.labels = currentBarTrusts.map(t => trunc(t.name, 32));
+  trustBar.data.datasets[0].data = currentBarTrusts.map(t => (t.pct ?? 0) * 100);
+  trustBar.data.datasets[0].backgroundColor = currentBarTrusts.map(t => bandColour(t.band));
+  trustBar.update();
+  document.getElementById('bar-hint').textContent =
+    'Lowest performers first — showing ' + idx.length + ' of ' + all.length +
+    ' trusts. Hover a bar for total waiting and 52-week waits.';
+}
+
+function refreshMatrix() {
+  // Show the largest trusts (by list size) within the current filter.
+  const idx = filteredTrustIndices()
+    .slice()
+    .sort((a, b) => D.trusts[b].total - D.trusts[a].total)
+    .slice(0, MAX_MATRIX_ROWS);
+  const specs = matrix.specialties;
+  let html = '<thead><tr><th style="text-align:left">Trust</th>';
+  specs.forEach(s => html += '<th>' + trunc(s.replace(' Service', ''), 14) + '</th>');
+  html += '</tr></thead><tbody>';
+  idx.forEach(i => {
+    html += '<tr><th title="' + D.trusts[i].name + '">' + trunc(D.trusts[i].name, 34) + '</th>';
+    specs.forEach((s, si) => {
+      const c = cellMap.get(i + '_' + si);
+      if (!c || c[1] === 0) { html += '<td class="empty">–</td>'; return; }
+      const pct = c[0] / c[1];
+      const band = pct < 0.70 ? 'Below 70%' : pct <= 0.80 ? '70-80%' : 'Above 80%';
+      const bg = bandColour(band);
+      html += '<td class="cell" style="background:' + bg + '22" title="' +
+        D.trusts[i].name + ' — ' + s + '\n' + fmtInt(c[0]) + ' of ' + fmtInt(c[1]) +
+        ' within 18 weeks">' + (pct * 100).toFixed(0) + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('matrix-table').innerHTML = html;
+  const total = filteredTrustIndices().length;
+  document.getElementById('matrix-note').textContent =
+    'Showing ' + idx.length + ' of ' + total + ' trusts (largest by list size). Use the filters to drill into a region or band.';
+}
+
+let trustBuilt = false;
+function refreshTrustPage() {
+  if (!trustBuilt) { buildTrustBarShell(); trustBuilt = true; }
+  refreshTrustBar();
+  refreshMatrix();
+}
+icbSelect.addEventListener('change', refreshTrustPage);
+bandSelect.addEventListener('change', refreshTrustPage);
+
+/* =======================================================================
+   PAGE 3 - Specialty Breakdown
+   ======================================================================= */
+let specialtyBuilt = false;
+function buildSpecialtyPage() {
+  // Top 15 specialties by estimated mean wait.
+  const top = D.specialties.slice()
+    .filter(s => s.est_mean_weeks !== null)
+    .sort((a, b) => b.est_mean_weeks - a.est_mean_weeks)
+    .slice(0, 15);
+  new Chart(document.getElementById('specialty-bar'), {
+    type: 'bar',
+    data: { labels: top.map(s => trunc(s.name.replace(' Service', ''), 26)),
+      datasets: [{ label: 'Estimated mean wait (weeks)', data: top.map(s => s.est_mean_weeks),
+        backgroundColor: C.aqua, borderWidth: 0 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { afterLabel: c => {
+          const s = top[c.dataIndex];
+          return 'Total waiting: ' + fmtInt(s.total) + '\n% within 18 weeks: ' + fmtPct(s.pct); } } } },
+      scales: { x: { title: { display: true, text: 'estimated mean wait (weeks)' } },
+        y: { ticks: { autoSkip: false, font: { size: 11 } } } } }
+  });
+
+  // Scatter: one bubble per trust.
+  const points = D.trusts.filter(t => t.total > 0).map(t => ({
+    x: t.total, y: (t.pct ?? 0) * 100, r: Math.min(22, 2 + Math.sqrt(t.over52) / 8),
+    name: t.name, over52: t.over52, code: t.code,
+    idx: D.trusts.indexOf(t)
+  }));
+  const colours = points.map(p => bandColour(
+    p.y < 70 ? 'Below 70%' : p.y <= 80 ? '70-80%' : 'Above 80%'));
+  const scatter = new Chart(document.getElementById('scatter-chart'), {
+    type: 'bubble',
+    data: { datasets: [{ data: points, backgroundColor: colours.map(c => c + 'B0'),
+      borderColor: colours, borderWidth: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: {
+          title: items => items[0].raw.name,
+          label: p => ['Total waiting: ' + fmtInt(p.raw.x),
+            '% within 18 weeks: ' + p.raw.y.toFixed(1) + '%',
+            'Over 52 weeks: ' + fmtInt(p.raw.over52)] } } },
+      scales: { x: { title: { display: true, text: 'total patients waiting' },
+          ticks: { callback: v => v >= 1000 ? (v / 1000) + 'k' : v } },
+        y: { min: 0, max: 100, title: { display: true, text: '% within 18 weeks' },
+          ticks: { callback: v => v + '%' } } },
+      onClick: (e, els) => { if (els.length) showTrustDetail(points[els[0].index].idx); }
+    }
+  });
+}
+
+// Drill-through: show one trust's specialty detail in the table.
+function showTrustDetail(i) {
+  const t = D.trusts[i];
+  document.getElementById('detail-title').textContent = 'Trust detail: ' + t.name;
+  document.getElementById('detail-hint').textContent =
+    t.icb + ' — ' + fmtInt(t.total) + ' waiting, ' + fmtPct(t.pct) +
+    ' within 18 weeks, ' + fmtInt(t.over52) + ' over 52 weeks.';
+  const rows = [];
+  matrix.specialties.forEach((s, si) => {
+    const c = cellMap.get(i + '_' + si);
+    if (c && c[1] > 0) rows.push({ name: s, within: c[0], total: c[1], pct: c[0] / c[1] });
+  });
+  rows.sort((a, b) => b.total - a.total);
+  let html = '<thead><tr><th>Specialty</th><th>Total waiting</th><th>Within 18 weeks</th><th>% within 18 weeks</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr><td>' + r.name + '</td><td>' + fmtInt(r.total) + '</td><td>' + fmtInt(r.within) +
+      '</td><td style="color:' + bandColour(r.pct < 0.7 ? 'Below 70%' : r.pct <= 0.8 ? '70-80%' : 'Above 80%') +
+      ';font-weight:700">' + fmtPct(r.pct) + '</td></tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('detail-table').innerHTML = html;
+}
+
+/* =======================================================================
+   Tab navigation (lazy-build charts the first time a page is opened so
+   Chart.js measures a visible canvas and sizes it correctly)
+   ======================================================================= */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    const page = tab.dataset.page;
+    document.getElementById('page-' + page).classList.add('active');
+    if (page === 'trust') refreshTrustPage();
+    if (page === 'specialty' && !specialtyBuilt) { buildSpecialtyPage(); specialtyBuilt = true; }
+  });
+});
+
+/* ---- initial render ---------------------------------------------------- */
+buildOverview();
+refreshOverview();
+</script>
+</body>
+</html>

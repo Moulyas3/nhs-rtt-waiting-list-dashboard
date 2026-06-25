@@ -1,0 +1,2 @@
+# Raw NHS England downloads land here when you run scripts/clean_rtt_data.py.
+# They are git-ignored because they are large and can always be re-downloaded.

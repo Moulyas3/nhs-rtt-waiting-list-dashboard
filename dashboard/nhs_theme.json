@@ -1,0 +1,15 @@
+{
+  "name": "NHS RTT Theme",
+  "dataColors": ["#003087", "#00A9CE", "#DA291C", "#FFB81C", "#425563", "#768692"],
+  "background": "#FFFFFF",
+  "foreground": "#425563",
+  "tableAccent": "#003087",
+  "visualStyles": {
+    "*": {
+      "*": {
+        "fontFamily": [{"value": "Arial"}],
+        "fontSize": [{"value": 11}]
+      }
+    }
+  }
+}
