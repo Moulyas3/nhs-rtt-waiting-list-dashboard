@@ -1,0 +1,51 @@
+name: Refresh RTT data
+
+# Re-runs the cleaning pipeline and commits any changes to the processed data
+# and the dashboard's data file. Runs on a monthly schedule and can also be
+# triggered by hand from the Actions tab.
+#
+# Note: this regenerates the outputs from whatever months are listed in
+# SOURCE_FILES in scripts/clean_rtt_data.py, and picks up any revisions NHS
+# England makes to those months. To pull in a brand-new month, add its
+# "Full CSV data file" URL to SOURCE_FILES first (full auto-discovery of new
+# months would be a sensible future enhancement).
+
+on:
+  schedule:
+    # 07:00 UTC on the 8th of each month. NHS England publishes RTT data around
+    # six weeks after the reporting month, so this stays comfortably current.
+    - cron: "0 7 8 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the cleaning pipeline
+        run: python scripts/clean_rtt_data.py
+
+      - name: Commit refreshed data (only if something changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed dashboard/dashboard_data.js
+          if git diff --staged --quiet; then
+            echo "No changes - data is already up to date."
+          else
+            git commit -m "Automated data refresh"
+            git push
+          fi
