@@ -631,21 +631,30 @@ function showTrustDetail(i) {
    Tab navigation (lazy-build charts the first time a page is opened so
    Chart.js measures a visible canvas and sizes it correctly)
    ======================================================================= */
+function activatePage(page) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const section = document.getElementById('page-' + page);
+  if (!section) return;
+  section.classList.add('active');
+  if (page === 'trust') refreshTrustPage();
+  if (page === 'specialty' && !specialtyBuilt) { buildSpecialtyPage(); specialtyBuilt = true; }
+}
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    tab.classList.add('active');
-    const page = tab.dataset.page;
-    document.getElementById('page-' + page).classList.add('active');
-    if (page === 'trust') refreshTrustPage();
-    if (page === 'specialty' && !specialtyBuilt) { buildSpecialtyPage(); specialtyBuilt = true; }
+    activatePage(tab.dataset.page);
+    history.replaceState(null, '', '#' + tab.dataset.page);   // deep-linkable tabs
   });
 });
 
 /* ---- initial render ---------------------------------------------------- */
 buildOverview();
 refreshOverview();
+
+// Open the tab named in the URL hash (e.g. #trust) on load, so each page is
+// deep-linkable and can be captured individually.
+const requestedPage = (location.hash || '').replace('#', '');
+if (['overview', 'trust', 'specialty'].includes(requestedPage)) activatePage(requestedPage);
 </script>
 </body>
 </html>

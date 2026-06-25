@@ -16,6 +16,16 @@ The snapshot committed to this repository covers April 2026, with a 13-month nat
 trend running from April 2025. Re-running the cleaning script with newer files updates
 everything automatically.
 
+## Dashboard preview
+
+National Overview, Trust Performance, and Specialty Breakdown:
+
+![National Overview page](screenshots/dashboard-page1.png)
+
+![Trust Performance page](screenshots/dashboard-page2.png)
+
+![Specialty Breakdown page](screenshots/dashboard-page3.png)
+
 ## Data source
 
 All figures come from NHS England's published RTT waiting times statistics, released
